@@ -151,7 +151,7 @@ repeat:
 			if err != nil {
 				log.Fatal(err)
 			}
-			printInfo(defInfo{Pkg: pkgPath})
+			outputData(pkgPath)
 			return
 		}
 	}
@@ -176,38 +176,30 @@ repeat:
 		case *types.Signature:
 			if t.Recv() == nil {
 				// Top-level func.
-				printInfo(objectDefInfo(obj))
+				outputData(objectString(obj))
 			} else {
 				// Method or interface method.
-				printInfo(defInfo{
-					obj.Pkg().Path(),
-					dereferenceType(t.Recv().Type()).(*types.Named).Obj().Name(),
-					identX.Name,
-				})
+				outputData(obj.Pkg().Path(), dereferenceType(t.Recv().Type()).(*types.Named).Obj().Name(), identX.Name)
 			}
 			return
 		}
 
 		if obj.Parent() == pkg.Scope() {
 			// Top-level package def.
-			printInfo(objectDefInfo(obj))
+			outputData(objectString(obj))
 			return
 		}
 
 		// Struct field.
 		if _, ok := nodes[1].(*ast.Field); ok {
 			if typ, ok := nodes[4].(*ast.TypeSpec); ok {
-				printInfo(defInfo{
-					obj.Pkg().Path(),
-					typ.Name.Name,
-					obj.Name(),
-				})
+				outputData(obj.Pkg().Path(), typ.Name.Name, obj.Name())
 				return
 			}
 		}
 
 		if pkg, name, ok := typeName(dereferenceType(obj.Type())); ok {
-			printInfo(defInfo{Pkg: pkg, Sym: name})
+			outputData(pkg, name)
 			return
 		}
 
@@ -224,34 +216,26 @@ repeat:
 		// Struct literal
 		if lit, ok := nodes[2].(*ast.CompositeLit); ok {
 			if parent, ok := lit.Type.(*ast.SelectorExpr); ok {
-				printInfo(defInfo{
-					obj.Pkg().Path(),
-					parent.Sel.String(),
-					obj.Id(),
-				})
+				outputData(obj.Pkg().Path(), parent.Sel, obj.Id())
 				return
 			} else if parent, ok := lit.Type.(*ast.Ident); ok {
-				printInfo(defInfo{
-					obj.Pkg().Path(),
-					parent.String(),
-					obj.Id(),
-				})
+				outputData(obj.Pkg().Path(), parent, obj.Id())
 				return
 			}
 		}
 	}
 
 	if pkgName, ok := obj.(*types.PkgName); ok {
-		printInfo(defInfo{Pkg: pkgName.Imported().Path()})
+		outputData(pkgName.Imported().Path())
 	} else if selX == nil {
 		if pkg.Scope().Lookup(identX.Name) == obj {
-			printInfo(objectDefInfo(obj))
+			outputData(objectString(obj))
 		} else if types.Universe.Lookup(identX.Name) == obj {
-			printInfo(defInfo{Pkg: "builtin", Sym: obj.Name()})
+			outputData("builtin", obj.Name())
 		} else {
 			t := dereferenceType(obj.Type())
 			if pkg, name, ok := typeName(t); ok {
-				printInfo(defInfo{Pkg: pkg, Sym: name})
+				outputData(pkg, name)
 				return
 			}
 			log.Fatalf("not a package-level definition (ident: %v, object: %v) and unable to follow type (type: %v)", identX, obj, t)
@@ -268,19 +252,18 @@ repeat:
 			// field invoked, but object is selected
 			t := dereferenceType(obj.Type())
 			if pkg, name, ok := typeName(t); ok {
-				printInfo(defInfo{Pkg: pkg, Sym: name})
+				outputData(pkg, name)
 				return
 			}
 			log.Fatal("method or field not found")
 		}
-		info := objectDefInfo(recv.Obj())
-		info.Field = identX.Name
-		printInfo(info)
+
+		outputData(objectString(recv.Obj()), identX.Name)
 	} else {
 		// Qualified reference (to another package's top-level
 		// definition).
 		if obj := info.Uses[selX.Sel]; obj != nil {
-			printInfo(objectDefInfo(obj))
+			outputData(objectString(obj))
 		} else {
 			log.Fatal("no selector type")
 		}
@@ -412,7 +395,7 @@ func getMethod(typ types.Type, idx int, final bool, method bool) (obj types.Obje
 }
 
 func objectString(obj types.Object) string {
-	if obj.Pkg != nil {
+	if obj.Pkg() != nil {
 		return fmt.Sprintf("%s %s", obj.Pkg().Path(), obj.Name())
 	}
 	return obj.Name()
