@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"go/ast"
@@ -33,6 +34,7 @@ var (
 
 	cpuprofile  = flag.String("debug.cpuprofile", "", "write CPU profile to this file")
 	repetitions = flag.Int("debug.repetitions", 1, "repeat this many times to generate better profiles")
+	useJSON     = flag.Bool("json", false, "return JSON structured output")
 )
 
 var (
@@ -150,7 +152,7 @@ repeat:
 			if err != nil {
 				log.Fatal(err)
 			}
-			fmt.Println(pkgPath)
+			printInfo(defInfo{Pkg: pkgPath})
 			return
 		}
 	}
@@ -175,30 +177,38 @@ repeat:
 		case *types.Signature:
 			if t.Recv() == nil {
 				// Top-level func.
-				fmt.Println(objectString(obj))
+				printInfo(objectDefInfo(obj))
 			} else {
 				// Method or interface method.
-				fmt.Println(obj.Pkg().Path(), dereferenceType(t.Recv().Type()).(*types.Named).Obj().Name(), identX.Name)
+				printInfo(defInfo{
+					obj.Pkg().Path(),
+					dereferenceType(t.Recv().Type()).(*types.Named).Obj().Name(),
+					identX.Name,
+				})
 			}
 			return
 		}
 
 		if obj.Parent() == pkg.Scope() {
 			// Top-level package def.
-			fmt.Println(objectString(obj))
+			printInfo(objectDefInfo(obj))
 			return
 		}
 
 		// Struct field.
 		if _, ok := nodes[1].(*ast.Field); ok {
 			if typ, ok := nodes[4].(*ast.TypeSpec); ok {
-				fmt.Println(obj.Pkg().Path(), typ.Name.Name, obj.Name())
+				printInfo(defInfo{
+					obj.Pkg().Path(),
+					typ.Name.Name,
+					obj.Name(),
+				})
 				return
 			}
 		}
 
 		if pkg, name, ok := typeName(dereferenceType(obj.Type())); ok {
-			fmt.Println(pkg, name)
+			printInfo(defInfo{Pkg: pkg, Sym: name})
 			return
 		}
 
@@ -215,22 +225,30 @@ repeat:
 		// Struct literal
 		if lit, ok := nodes[2].(*ast.CompositeLit); ok {
 			if parent, ok := lit.Type.(*ast.SelectorExpr); ok {
-				fmt.Println(obj.Pkg().Path(), parent.Sel, obj.Id())
+				printInfo(defInfo{
+					obj.Pkg().Path(),
+					parent.Sel.String(),
+					obj.Id(),
+				})
 				return
 			} else if parent, ok := lit.Type.(*ast.Ident); ok {
-				fmt.Println(obj.Pkg().Path(), parent, obj.Id())
+				printInfo(defInfo{
+					obj.Pkg().Path(),
+					parent.String(),
+					obj.Id(),
+				})
 				return
 			}
 		}
 	}
 
 	if pkgName, ok := obj.(*types.PkgName); ok {
-		fmt.Println(pkgName.Imported().Path())
+		printInfo(defInfo{Pkg: pkgName.Imported().Path()})
 	} else if selX == nil {
 		if pkg.Scope().Lookup(identX.Name) == obj {
-			fmt.Println(objectString(obj))
+			printInfo(objectDefInfo(obj))
 		} else if types.Universe.Lookup(identX.Name) == obj {
-			fmt.Println("builtin", obj.Name())
+			printInfo(defInfo{Pkg: "builtin", Sym: obj.Name()})
 		} else {
 			t := dereferenceType(obj.Type())
 			if pkg, name, ok := typeName(t); ok {
@@ -256,13 +274,14 @@ repeat:
 			}
 			log.Fatal("method or field not found")
 		}
-
-		fmt.Println(objectString(recv.Obj()), identX.Name)
+		info := objectDefInfo(recv.Obj())
+		info.Field = identX.Name
+		printInfo(info)
 	} else {
 		// Qualified reference (to another package's top-level
 		// definition).
 		if obj := info.Uses[selX.Sel]; obj != nil {
-			fmt.Println(objectString(obj))
+			printInfo(objectDefInfo(obj))
 		} else {
 			log.Fatal("no selector type")
 		}
@@ -272,6 +291,21 @@ repeat:
 		*repetitions--
 		goto repeat
 	}
+}
+
+type defInfo struct {
+	Pkg   string
+	Sym   string
+	Field string
+}
+
+func printInfo(info defInfo) {
+	if *useJSON {
+		out := json.NewEncoder(os.Stdout)
+		out.Encode(info)
+		return
+	}
+	fmt.Println(info.Pkg, info.Sym, info.Field)
 }
 
 func parsePackage(filename string, src []byte) (files []*ast.File, err error) {
@@ -393,8 +427,15 @@ func getMethod(typ types.Type, idx int, final bool, method bool) (obj types.Obje
 	return nil
 }
 
-func objectString(obj types.Object) string {
+func objectDefInfo(obj types.Object) defInfo {
 	if obj.Pkg() != nil {
+		return defInfo{Sym: obj.Name(), Pkg: obj.Pkg().Path()}
+	}
+	return defInfo{Sym: obj.Name()}
+}
+
+func objectString(obj types.Object) string {
+	if obj.Pkg != nil {
 		return fmt.Sprintf("%s %s", obj.Pkg().Path(), obj.Name())
 	}
 	return obj.Name()
