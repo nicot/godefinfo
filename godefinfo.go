@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"go/ast"
@@ -252,7 +251,7 @@ repeat:
 		} else {
 			t := dereferenceType(obj.Type())
 			if pkg, name, ok := typeName(t); ok {
-				fmt.Println(pkg, name)
+				printInfo(defInfo{Pkg: pkg, Sym: name})
 				return
 			}
 			log.Fatalf("not a package-level definition (ident: %v, object: %v) and unable to follow type (type: %v)", identX, obj, t)
@@ -269,7 +268,7 @@ repeat:
 			// field invoked, but object is selected
 			t := dereferenceType(obj.Type())
 			if pkg, name, ok := typeName(t); ok {
-				fmt.Println(pkg, name)
+				printInfo(defInfo{Pkg: pkg, Sym: name})
 				return
 			}
 			log.Fatal("method or field not found")
@@ -291,21 +290,6 @@ repeat:
 		*repetitions--
 		goto repeat
 	}
-}
-
-type defInfo struct {
-	Pkg   string
-	Sym   string
-	Field string
-}
-
-func printInfo(info defInfo) {
-	if *useJSON {
-		out := json.NewEncoder(os.Stdout)
-		out.Encode(info)
-		return
-	}
-	fmt.Println(info.Pkg, info.Sym, info.Field)
 }
 
 func parsePackage(filename string, src []byte) (files []*ast.File, err error) {
@@ -425,13 +409,6 @@ func getMethod(typ types.Type, idx int, final bool, method bool) (obj types.Obje
 		return obj.Method(idx).Type().(*types.Signature).Recv()
 	}
 	return nil
-}
-
-func objectDefInfo(obj types.Object) defInfo {
-	if obj.Pkg() != nil {
-		return defInfo{Sym: obj.Name(), Pkg: obj.Pkg().Path()}
-	}
-	return defInfo{Sym: obj.Name()}
 }
 
 func objectString(obj types.Object) string {
