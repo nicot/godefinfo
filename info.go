@@ -6,8 +6,6 @@ import (
 	"os"
 	"strings"
 
-	"path/filepath"
-
 	"github.com/golang/gddo/gosrc"
 )
 
@@ -18,20 +16,18 @@ type defInfo struct {
 	Unit     string
 	UnitType string
 	Kind     string
-	File     string
 }
 
 func outputData(data ...interface{}) {
+	// TODO main package files
 	output := fmt.Sprintln(data...)
 	if !*useJSON {
 		fmt.Print(output)
 		return
 	}
 	datas := strings.Split(strings.Trim(output, "\n"), " ")
-	file := filepath.Base(*filename)
 	info := defInfo{
 		UnitType: "GoPackage",
-		File:     file,
 	}
 	if len(datas) > 0 {
 		info = setRepo(info, datas[0])
@@ -47,24 +43,17 @@ func outputData(data ...interface{}) {
 		info.Kind = "package"
 	}
 	json.NewEncoder(os.Stdout).Encode(info)
-	// TODO main package files
-	// TODO package tree urls
 }
 
 func setRepo(info defInfo, fullPath string) defInfo {
-	// The funny thing is none of these are packages
+	info.Unit = fullPath
 	if gosrc.IsGoRepoPath(fullPath) {
 		info.Repo = "github.com/golang/go"
+		info.Package = "src/" + fullPath
 	} else {
 		paths := strings.Split(fullPath, "/")
-		paths = paths[0:3]
-		info.Repo = strings.Join(paths, "/")
+		info.Repo = strings.Join(paths[0:3], "/")
+		info.Package = strings.Join(paths[3:], "/")
 	}
-	// Don't ask me:
-	info.Package = fullPath
-	info.Unit = fullPath
 	return info
 }
-
-var x int
-var y string
