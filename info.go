@@ -25,6 +25,10 @@ func outputData(data ...interface{}) {
 		fmt.Print(output)
 		return
 	}
+	printStructured(output)
+}
+
+func printStructured(output string) {
 	datas := strings.Split(strings.Trim(output, "\n"), " ")
 	info := defInfo{
 		UnitType: "GoPackage",
